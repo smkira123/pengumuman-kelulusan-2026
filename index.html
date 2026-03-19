@@ -240,7 +240,7 @@
       <div class="inline-flex items-center justify-center w-24 h-24 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-500/30 mb-4 animate-float"><i data-lucide="graduation-cap" class="w-12 h-12 text-white"></i>
       </div>
       <h1 id="schoolNameDisplay" class="text-2xl md:text-3xl font-bold text-white font-playfair mb-2">SMK ISLAM JEPARA</h1>
-      <p class="text-amber-400/80 text-sm tracking-widest uppercase">Tahun Ajaran <span id="academicYearDisplay">2025/2026</span></p>
+      <p class="text-amber-400/80 text-sm tracking-widest uppercase">Tahun Ajaran <span id="academicYearDisplay">2024/2025</span></p>
      </div><!-- Login Card -->
      <div class="gradient-border rounded-2xl card-shadow animate-fadeInUp" style="animation-delay: 0.3s;">
       <div class="bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-xl rounded-2xl p-8">
@@ -273,7 +273,7 @@
          <div class="absolute inset-0 rounded-full bg-amber-400/30 animate-pulse-ring"></div><i data-lucide="graduation-cap" class="w-10 h-10 text-white relative z-10"></i>
         </div>
         <h2 id="resultSchoolName" class="text-xl font-bold text-white font-playfair">SMK ISLAM JEPARA</h2>
-        <p class="text-slate-400 text-sm mt-1">Tahun Ajaran <span id="resultAcademicYear">2025/2026</span></p>
+        <p class="text-slate-400 text-sm mt-1">Tahun Ajaran <span id="resultAcademicYear">2024/2025</span></p>
        </div><!-- Divider -->
        <div class="flex items-center gap-4 my-6">
         <div class="flex-1 h-px bg-gradient-to-r from-transparent via-amber-500/50 to-transparent"></div><i data-lucide="star" class="w-5 h-5 text-amber-500"></i>
@@ -329,12 +329,67 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
 
-    // Student Data (initialized empty, will be populated via file upload)
-    let studentData = [
-      { no: 1, nama: "AHMAD ABI ANANTA", nisn: "0075930946", kelas: "XII AT", ttl: "JEPARA", status: "LULUS" },
-      { no: 2, nama: "ANDIKA LUKMAN HAKIM", nisn: "0049421788", kelas: "XII AT", ttl: "JEPARA", status: "LULUS" },
-      { no: 3, nama: "ARIF IMAM WAHYUDI", nisn: "3075079864", kelas: "XII AT", ttl: "JEPARA", status: "LULUS" }
-    ];
+    // Student Data with localStorage persistence
+    let studentData = [];
+
+    // Load student data from localStorage on page load
+    function loadStudentData() {
+      const saved = localStorage.getItem('studentData');
+      if (saved) {
+        try {
+          studentData = JSON.parse(saved);
+        } catch (e) {
+          console.error('Error loading student data:', e);
+          studentData = [];
+        }
+      }
+    }
+
+    // Save student data to localStorage
+    function saveStudentData() {
+      localStorage.setItem('studentData', JSON.stringify(studentData));
+    }
+
+    // Load session on page load
+    function loadAdminSession() {
+      const session = localStorage.getItem('adminSession');
+      if (session) {
+        try {
+          const sessionData = JSON.parse(session);
+          if (new Date(sessionData.expiry) > new Date()) {
+            isAdminLoggedIn = true;
+            adminToggle.classList.add('opacity-60', 'ring-2', 'ring-amber-500');
+            return true;
+          } else {
+            localStorage.removeItem('adminSession');
+          }
+        } catch (e) {
+          console.error('Error loading session:', e);
+        }
+      }
+      return false;
+    }
+
+    // Save admin session
+    function saveAdminSession() {
+      const expiry = new Date();
+      expiry.setHours(expiry.getHours() + 4);
+      localStorage.setItem('adminSession', JSON.stringify({
+        loggedIn: true,
+        expiry: expiry.toISOString()
+      }));
+      adminToggle.classList.add('opacity-60', 'ring-2', 'ring-amber-500');
+    }
+
+    // Clear admin session
+    function clearAdminSession() {
+      localStorage.removeItem('adminSession');
+      adminToggle.classList.remove('opacity-60', 'ring-2', 'ring-amber-500');
+    }
+
+    // Initialize on page load
+    loadStudentData();
+    loadAdminSession();
 
     // Default Config
     const defaultConfig = {
@@ -392,6 +447,7 @@
 
       if (username === adminCredentials.username && password === adminCredentials.password) {
         isAdminLoggedIn = true;
+        saveAdminSession();
         adminLoginError.classList.add('hidden');
         adminLoginModal.classList.add('hidden');
         adminMenuModal.classList.remove('hidden');
@@ -404,6 +460,7 @@
     // Handle logout
     logoutBtn.addEventListener('click', () => {
       isAdminLoggedIn = false;
+      clearAdminSession();
       adminMenuModal.classList.add('hidden');
       adminLoginModal.classList.remove('hidden');
       adminUsername.value = '';
@@ -540,6 +597,7 @@
     function deleteStudent(index) {
       if (confirm(`Hapus data ${studentData[index].nama}?`)) {
         studentData.splice(index, 1);
+        saveStudentData();
         renderStudentList();
         updateStats();
       }
@@ -774,6 +832,7 @@
               }
 
               studentData = importedData;
+              saveStudentData();
               showUploadStatus(`✅ Berhasil! ${importedData.length} siswa terimport`, 'success');
               
               setTimeout(() => {
@@ -893,14 +952,37 @@
       const nama = namaInput.value.trim().toUpperCase();
       const nisn = nisnInput.value.trim();
 
-      const student = studentData.find(s => 
-        s.nama === nama && s.nisn === nisn
+      console.log('Search - Nama:', nama, 'NISN:', nisn);
+      console.log('Database records:', studentData.length);
+      
+      // Try exact match first
+      let student = studentData.find(s => 
+        s.nama.trim().toUpperCase() === nama && 
+        s.nisn.trim() === nisn
       );
 
+      // If no exact match, try flexible matching
+      if (!student) {
+        student = studentData.find(s => {
+          const dbNama = s.nama.trim().toUpperCase();
+          const dbNisn = s.nisn.trim();
+          const inputNama = nama.toUpperCase();
+          const inputNisn = nisn.trim();
+          
+          // Normalize spaces and special characters
+          const normalizedDbNama = dbNama.replace(/\s+/g, ' ').trim();
+          const normalizedInputNama = inputNama.replace(/\s+/g, ' ').trim();
+          
+          return normalizedDbNama === normalizedInputNama && dbNisn === inputNisn;
+        });
+      }
+
       if (student) {
+        console.log('Student found:', student.nama);
         errorMessage.classList.add('hidden');
         showResult(student);
       } else {
+        console.log('Student not found. Available records:', studentData.map(s => ({ nama: s.nama, nisn: s.nisn })));
         errorMessage.classList.remove('hidden');
         errorMessage.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
@@ -933,5 +1015,5 @@
     // Initialize Lucide icons
     lucide.createIcons();
   </script>
- <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9de90fa135d74030',t:'MTc3Mzg4NzQ4OC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9de96f5040a94030',t:'MTc3Mzg5MTQwNy4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
